@@ -1,0 +1,12 @@
+{
+  "package": "xiao.cbra.machinemax.mixin",
+  "minVersion": "0.8",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "cbramachinemax.refmap.json",
+  "mixins": [
+    "SubPartMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

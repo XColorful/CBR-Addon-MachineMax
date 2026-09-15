@@ -87,3 +87,76 @@ MMDynamicRes.TEMPLATES.get(vehicleLocation)
 依据是 `VehicleBlueprintItem` 用 `false`，fork 的 `BaseVehicleItem.restoreFullState()` 默认值也是 `false`，且协议里只有 `vehicleLocation` 一个字段、没有地方携带装配状态。但如果你的战利品本意是"能直接开走的车"，那应该是 `true`。
 
 **B. 一个我没有解决的既有限制**：`MMPartEntity` 在区块卸载/重载时会被销毁重建（`VehicleCore.refreshAllPartEntities` 和 `SubPart.postTick` 都会重建），重建出来的实体**不带 gameId**。要覆盖这条路径得 hook MachineMax 的重建逻辑，超出本次范围，先报给你决定。
+
+# 
+
+```
+我补充了mixin环境，后续mixin写到cbramachinemax.mixins.json
+
+我修改成了刷新的载具直接能开，并且测试过生成位置差不多正确，只是略微比地面高（如果有模型最低处的信息则可以替代现用的vehicleData.min.y
+
+继续解决重建实体丢gameId的问题
+```
+
+# 
+
+I'll look at the new mixin setup and how `MMPartEntity` survives chunk reload.
+
+Let me check how `SubPart.variables` is used by MachineMax, to see if it's a safe place to carry the gameId.
+
+Let me check what CBR exposes for reading game state and the gameId implementation.
+
+Key finding: CBR stores entity gameId in `entity.getPersistentData()`, and there's a public read API. Let me check how to obtain it.
+
+Let me verify the entity-unload mechanism so the fix rests on solid ground.
+
+Now I'll write the mixin. Design: `SubPart.refreshPartEntity()` is the only place `MMPartEntity` is created, so I transfer the gameId from the outgoing entity to the new one there.
+
+Now the real gate — Gradle, which also runs the mixin annotation processor.
+
+Let me review the final state of my changes.
+
+Let me settle whether the declared-but-absent `refmap` is harmful, by checking Mixin's actual behavior.
+
+Let me check the actual template bounds to answer the spawn-height question concretely.
+
+完成。改动是新增一个 mixin + 注册配置。
+
+## 方案：把 gameId 从旧实体转移到新实体
+
+我确认了 `SubPart#refreshPartEntity()` 是 **MachineMax 全代码库中唯一创建 `MMPartEntity` 的位置**（fork 里 grep `new MMPartEntity` 也只有这一处），所以它是唯一的收敛点。
+
+而区块卸载的机制我查了 MC 源码确认：`PersistentEntitySectionManager.unloadEntity` 会对实体调用 `setRemoved(UNLOADED_TO_CHUNK)` —— 实体对象只是被**标记移除**，`SubPart.entity` 这个强引用仍然指着它，它身上的 `getPersistentData()`（CBR 存 gameId 的地方）原封不动。所以不需要任何额外的全局映射表，直接在重建前后做一次"搬移"：
+
+- `HEAD`：从 `this.entity`（即将被顶替的旧实体）读出 gameId
+- `TAIL`：写进 `this.entity`（新建的实体）
+
+[SubPartMixin.java](../CBR-Addon-MachineMax/core/src/main/java/xiao/cbra/machinemax/mixin/SubPartMixin.java) 就是这个，注册在 [cbramachinemax.mixins.json](../CBR-Addon-MachineMax/core/src/main/resources/cbramachinemax.mixins.json)。
+
+选这个方案而不是"用静态 Map 记 vehicle UUID → gameId"，是因为 SubPart 会跟着 Part 在**合并/拆分**载具时整体转移到新的 VehicleCore 上（`absorbVehicle` / `VehicleCore(level, uuid, partNet, oldVehicle)`），按 SubPart 自身的实体引用传递天然覆盖这些情况，按载具 UUID 建表则会在拆分出的新载具上断链；而且不需要生命周期管理，没有泄漏。
+
+同时 `generateVehicle` 里的 gameId 写入要保留——首次创建时没有旧实体可继承，那里是 gameId 的唯一来源。
+
+## 验证情况
+
+Gradle `:core:compileJava`（`--rerun-tasks`）和 `:core:jar` 都通过，产物里确认有 `xiao/cbra/machinemax/mixin/SubPartMixin.class` 和 `cbramachinemax.mixins.json`。
+
+**但我无法启动游戏，所以运行时还没验证。** 你测试时看两点：启动日志里应有 `Mixing SubPartMixin from cbramachinemax.mixins.json into ...SubPart`；然后对刷新出的载具做一次区块卸载/重载，检查部件实体的 `NeoForgeData.GameId` 是否还在。另外 `injectors.defaultRequire = 1`，所以如果目标方法对不上会直接崩而不是静默失效——这也意味着这个 mixin 只在旧版 MachineMax jar 上成立。
+
+## 两个遗留点
+
+**1. 服务器重启 / 维度重新初始化仍会丢。** `ObjectManager.loadVehicles` 是从维度存档里的 `VehicleData` 重建 `VehicleCore` 的，而 `VehicleData` 里没有 gameId 字段，此时 `SubPart.entity` 是 null，没有可继承的来源。要覆盖得把载具与 gameId 的对应关系也持久化（比如另存一个 level data attachment），不确定你是否需要——BR 对局通常不跨重启。
+
+**2. `refmap` 声明指向一个不会生成的文件。** `cbramachinemax.refmap.json` 工程里没有配置 mixin 注解处理器，不会产出。我查了 Mixin 0.8.5 的 `MixinConfig`：读不到 refmap 只会打一条 warn（"Reference map '...' could not be read..."）然后退化成按字面名解析——而 NeoForge 1.21.1 用官方映射、Mixin 目标类也是官方映射编译的，字面名就是对的，所以功能上没问题。要消掉这条警告，删掉 `cbramachinemax.mixins.json` 里的 `"refmap"` 行即可（NeoForge MDK 的 mixins.json 也是不写 refmap 的）。我没动它，你决定。
+
+## 关于生成高度
+
+`vehicleData.min` 的来源是 `VehicleData(VehicleCore)` 里的 `vehicle.getAABB()`，它聚合的是各 SubPart 的 **物理碰撞包围盒**（`stateOf(body).getCachedBoundingBox()`），所以 `min.y` 是碰撞体最低点，不是视觉模型最低点。官方包里几个模板的实测值：
+
+| 模板 | min.y | max.y |
+|---|---|---|
+| jeep | -1.428 | 1.981 |
+| ae86 | -0.952 | 1.446 |
+| szn | -1.069 | 1.516 |
+
+`VehicleData` 里没有发布模型空间的下界，所以没有一个现成字段能替换 `min.y`。如果确实需要视觉最低点，得从模型的 cube/bone 数据（`ModelController.getOriginModel()` 那侧）自己算，那是另一件事了——要做的话告诉我。
