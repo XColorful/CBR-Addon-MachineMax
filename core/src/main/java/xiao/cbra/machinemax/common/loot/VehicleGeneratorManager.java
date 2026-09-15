@@ -36,7 +36,7 @@ public class VehicleGeneratorManager implements ICustomEventHandler {
         @Nullable VehicleDataProtocol protocol = VehicleDataProtocol.getConfigFromProtocol(event.getProtocol(), event.getJsonTag());
         if (protocol == null) return;
 
-        VehicleGenerator.generate(event.getLootContext(), event.getTarget(), event.getLootData(),
+        VehicleGenerator.generateVehicle(event.getLootContext(), event.getTarget(), event.getLootData(),
                 protocol);
 
         event.setCanceled(true);
