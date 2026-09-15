@@ -22,12 +22,14 @@
 ### 主要特色
 
 添加[通用事件刷新](https://github.com/XColorful/BattleRoyale/wiki/General-loot-config#通用事件刷新)协议：
+- vehicleLocation：载具模板资源位置
 
 ```json
 {
 	"lootType": "event",
 	"protocol": "cbramachinemax:0.5.6",
 	"jsonTag": {
+		"vehicleLocation": "namespace:path"
 	}
 }
 ```
@@ -62,13 +64,15 @@ This mod is an addon mod for [Custom BattleRoyale](https://github.com/XColorful/
 ### Main Features
 
 Add [Common event loot](https://github.com/XColorful/BattleRoyale/wiki/General-loot-config#common-event-loot) protocol:
+- vehicleLocation: Vehicle template resource location
 
 ```json
 {
-  "lootType": "event",
-  "protocol": "cbramachinemax:0.5.6",
-  "jsonTag": {
-  }
+	"lootType": "event",
+	"protocol": "cbramachinemax:0.5.6",
+	"jsonTag": {
+		"vehicleLocation": "namespace:path"
+	}
 }
 ```
 
