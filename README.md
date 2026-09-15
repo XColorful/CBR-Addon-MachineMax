@@ -65,10 +65,10 @@ Add [Common event loot](https://github.com/XColorful/BattleRoyale/wiki/General-l
 
 ```json
 {
-  "lootType": "event",
-  "protocol": "cbramachinemax:0.5.6",
-  "jsonTag": {
-  }
+	"lootType": "event",
+	"protocol": "cbramachinemax:0.5.6",
+	"jsonTag": {
+	}
 }
 ```
 
