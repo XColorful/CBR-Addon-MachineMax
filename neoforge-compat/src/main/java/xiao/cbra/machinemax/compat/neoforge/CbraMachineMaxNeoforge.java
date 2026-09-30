@@ -1,7 +1,8 @@
 package xiao.cbra.machinemax.compat.neoforge;
 
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.Mod;
-import xiao.battleroyale.BattleRoyale;
+import net.neoforged.fml.loading.FMLLoader;
 import xiao.battleroyale.api.common.McSide;
 import xiao.cbra.machinemax.CbraMachineMax;
 
@@ -9,7 +10,8 @@ import xiao.cbra.machinemax.CbraMachineMax;
 public class CbraMachineMaxNeoforge {
 
     public CbraMachineMaxNeoforge() {
-        McSide mcSide = BattleRoyale.getMcSide();
+        Dist dist = FMLLoader.getDist();
+        McSide mcSide = dist.isClient() ? McSide.CLIENT : McSide.DEDICATED_SERVER;
 
         CbraMachineMax.init(mcSide);
     }
